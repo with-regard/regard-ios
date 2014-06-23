@@ -7,6 +7,12 @@
 // Approximate maximum number of events to send in a batch
 const int c_MaxEventsPerBatch = 50;
 
+// Time interval before events are always flushed
+const NSTimeInterval c_MaxFlushTimeInterval = 1 /* Day */ * 24 /* Hours */ * 60 /* Minutes */ * 60 /* Seconds */;
+
+// Maximum number of cache files before forcing a flush
+const int c_MaxCacheFiles = 30;
+
 // Data structure written as the header for a set of events to the cache file
 struct CacheHeader {
     int _length;
@@ -43,6 +49,12 @@ static NSString* _optInDefaultsKey = @"io.WithRegard.OptIn";
 
 // Loads a set of events from a cache file into an array, to prepare to send them
 - (void) readEventsInFile: (NSString*) filename toArray: (NSMutableArray*) eventArray;
+
+// The directory that cached event data is stored in
+- (NSString*) cacheDirectory;
+
+// The list of cached event files waiting to be sent to the server (just the filenames, these are located in the cacheDirectory)
+- (NSArray*) cacheFiles;
 
 @end
 
@@ -469,29 +481,38 @@ static NSString* _optInDefaultsKey = @"io.WithRegard.OptIn";
     }
 }
 
+- (NSString*) cacheDirectory {
+    NSString* libraryDirectory = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES) objectAtIndex: 0];
+    NSString* cacheDirectory = [libraryDirectory stringByAppendingPathComponent: @"Caches/Regard"];
+
+    return cacheDirectory;
+}
+
+- (NSArray*) cacheFiles {
+    NSString* cacheDirectory = [self cacheDirectory];
+    
+    // Get a list of all of the cache files and filter to get the .regard files
+    NSArray* cacheFiles = [[NSFileManager defaultManager] contentsOfDirectoryAtPath: cacheDirectory
+                                                                              error: nil];
+    cacheFiles = [cacheFiles filteredArrayUsingPredicate: [NSPredicate predicateWithFormat: @"self ENDSWITH '.regard'"]];
+
+    return cacheFiles;
+}
+
 - (void) flushCachedEvents {
     dispatch_async(_recordQueue, ^{
-        NSError* flushError;
-        
         // Stop using whatever backing file we were before
         _backingFilename = [self pickBackingFilename];
 
         // Look in the caches directory
-        NSString* libraryDirectory = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES) objectAtIndex: 0];
-        NSString* cacheDirectory = [libraryDirectory stringByAppendingPathComponent: @"Caches/Regard"];
+        NSString* cacheDirectory = [self cacheDirectory];
+        NSArray* cacheFiles = [self cacheFiles];
         
         // List of events waiting to be sent
         NSMutableArray* waitingEvents = [NSMutableArray array];
         
-        // Get a list of all of the cache files and filter to get the .regard files
-        NSArray* cacheFiles = [[NSFileManager defaultManager] contentsOfDirectoryAtPath: cacheDirectory
-                                                                                  error: &flushError];
-        cacheFiles = [cacheFiles filteredArrayUsingPredicate: [NSPredicate predicateWithFormat: @"self ENDSWITH '.regard'"]];
-        
         // Go through the files
-        NSEnumerator*   fileEnum = [cacheFiles objectEnumerator];
-        NSString*       eventFile;
-        while (eventFile = [fileEnum nextObject]) {
+        for (NSString* eventFile in cacheFiles) {
             // Load the events from this file
             [self readEventsInFile: [cacheDirectory stringByAppendingPathComponent: eventFile] toArray: waitingEvents];
             
@@ -528,9 +549,45 @@ static NSString* _optInDefaultsKey = @"io.WithRegard.OptIn";
 
 - (void) flushCachedEventsIfOldEnough {
     dispatch_async(_recordQueue, ^{
-        // If we're connected using wifi, then the events are always old enough
+        // TODO: If we're connected using wifi, then the events are always old enough (or maybe only require an hour?)
         
         // If we're connected via mobile, then events must be at least a day old before we try sending them
+        NSDate* oldestEvents = [NSDate date];
+        
+        NSString*       cacheDirectory  = [self cacheDirectory];
+        NSArray*        cacheFiles      = [self cacheFiles];
+        NSFileManager*  fileManager     = [NSFileManager defaultManager];
+        
+        for (NSString* eventFile in cacheFiles) {
+            // Fetch the attributes of this file
+            NSString* fullPath = [cacheDirectory stringByAppendingPathComponent: eventFile];
+            NSDictionary* attributes = [fileManager attributesOfItemAtPath: fullPath
+                                                                     error: nil];
+            if (!attributes) {
+                NSLog(@"Regard: could not get attributes of %@", eventFile);
+                continue;
+            }
+            
+            // We're interested in the creation date of this file
+            NSDate* creationDate = [attributes objectForKey: NSFileCreationDate];
+            if (!creationDate) {
+                NSLog(@"Regard: could not get creation date of %@", eventFile);
+                continue;
+            }
+            
+            // Find the date of the oldest file
+            if ([creationDate compare: oldestEvents] == NSOrderedAscending) {
+                oldestEvents = creationDate;
+            }
+        }
+        
+        if ([oldestEvents timeIntervalSinceNow] < -c_MaxFlushTimeInterval) {
+            // Flush the events if they are old enough
+            [self flushCachedEvents];
+        } else if ([cacheFiles count] > c_MaxCacheFiles) {
+            // Flush the events if there are too many files
+            [self flushCachedEvents];
+        }
     });
 }
 

@@ -501,6 +501,9 @@ static NSString* _optInDefaultsKey = @"io.WithRegard.OptIn";
 
 - (void) flushCachedEvents {
     dispatch_async(_recordQueue, ^{
+        // Ensure that any waiting events are frozen to disk
+        [self freezeCache];
+        
         // Stop using whatever backing file we were before
         _backingFilename = [self pickBackingFilename];
 

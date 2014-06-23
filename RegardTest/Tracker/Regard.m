@@ -215,7 +215,7 @@ static NSString* _optInDefaultsKey = @"io.WithRegard.OptIn";
         if (!_willFreeze) {
             _willFreeze = true;
             
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 10 * 1000 * 1000 /* == 10ms */), _recordQueue, ^{
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 100 * 1000 * 1000 /* == 100ms */), _recordQueue, ^{
                 _willFreeze = false;
                 [self freezeCache];
             });

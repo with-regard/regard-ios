@@ -31,6 +31,12 @@
     
     // Queue used for recording events
     dispatch_queue_t _recordQueue;
+    
+    // Events that have been cached but not yet stored permanently
+    NSMutableArray* _recentEvents;
+    
+    // Set the YES if _recentEvents will be 'frozen' to disk
+    BOOL _willFreeze;
 }
 
 //

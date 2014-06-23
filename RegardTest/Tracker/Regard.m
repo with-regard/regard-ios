@@ -24,6 +24,12 @@ static NSString* _optInDefaultsKey = @"io.WithRegard.OptIn";
 // Generates or loads the user ID. This will persist between sessions.
 - (void) acquireUserId;
 
+// 'Freezes' the list of cached events to disk so we can send them later.
+- (void) freezeCache;
+
+// Callback when the application is no longer active
+- (void) appWillResignActive: (id) obj;
+
 @end
 
 @implementation Regard
@@ -86,6 +92,8 @@ static NSString* _optInDefaultsKey = @"io.WithRegard.OptIn";
     if (self) {
         _product                = product;
         _organization           = organization;
+        _recentEvents           = [[NSMutableArray alloc] init];
+        _willFreeze             = NO;
         
         // Work out if we're opted in or not
         _optIn                  = [[NSUserDefaults standardUserDefaults] boolForKey: _optInDefaultsKey];
@@ -112,9 +120,22 @@ static NSString* _optInDefaultsKey = @"io.WithRegard.OptIn";
         NSLocale* enUSPOSIXLocale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
         [_iso8601formatter setLocale:enUSPOSIXLocale];
         [_iso8601formatter setDateFormat:@"yyyy-MM-dd'T'HH:mm:ssZZZZZ"];
+        
+        // Freeze the cache every time the application is terminated
+        [[NSNotificationCenter defaultCenter] addObserver: self
+                                                 selector: @selector(appWillResignActive:)
+                                                     name: UIApplicationWillResignActiveNotification
+                                                   object: nil];
     }
     
     return self;
+}
+
+- (void) dealloc {
+    // Ensure that the cache is always frozen before the object is deallocated
+    dispatch_sync(_recordQueue, ^{ [self freezeCache]; });
+    
+    [[NSNotificationCenter defaultCenter] removeObserver: self];
 }
 
 - (void) acquireUserId {
@@ -186,8 +207,20 @@ static NSString* _optInDefaultsKey = @"io.WithRegard.OptIn";
 }
 
 - (void) cacheEvent: (NSDictionary*) eventData {
-    // TODO
-    [self sendEvent: eventData];
+    dispatch_async(_recordQueue, ^{
+        // Record this event in the recent events log
+        [_recentEvents addObject: eventData];
+        
+        // After a short delay, cache the event to disk for sending later on
+        if (!_willFreeze) {
+            _willFreeze = true;
+            
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 10 * 1000 * 1000 /* == 10ms */), _recordQueue, ^{
+                _willFreeze = false;
+                [self freezeCache];
+            });
+        }
+    });
 }
 
 - (void) forgetUserId {
@@ -290,12 +323,36 @@ static NSString* _optInDefaultsKey = @"io.WithRegard.OptIn";
     [self sendToEndpoint: events];
 }
 
+- (void) freezeCache {
+    // We assume that we're on the _recordQueue here
+    
+    // Nothing to do if the cache is empty
+    if (_recentEvents.count <= 0) {
+        return;
+    }
+    
+    // Replace the freezeEvents array
+    // (Caution: This code will need to be different if ARC is disabled)
+    NSMutableArray* freezeEvents = _recentEvents;
+    _recentEvents = [[NSMutableArray alloc] init];
+    
+    // TODO: Serialize to a log file
+    
+    // Temporary alternative: send as a batch of events
+    [self sendBatch: freezeEvents];
+}
+
 - (void) flushCachedEvents {
     // TODO
 }
 
 - (void) flushCachedEventsIfOldEnough {
     // TODO
+}
+
+- (void) appWillResignActive: (id) obj {
+    // Ensure that the cache is frozen before the app quits
+    dispatch_sync(_recordQueue, ^{ [self freezeCache]; });
 }
 
 @end

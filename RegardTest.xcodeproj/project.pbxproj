@@ -63,6 +63,7 @@
 		4BF1A88B19543A5F00542209 /* Regard.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Regard.h; sourceTree = "<group>"; };
 		4BF1A88C19543A5F00542209 /* Regard.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = Regard.m; sourceTree = "<group>"; };
 		4BF1A88E1954602400542209 /* Regard-Settings.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = "Regard-Settings.plist"; sourceTree = "<group>"; };
+		DDD6B75B195853FA0038D377 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = text; path = README.md; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -92,6 +93,7 @@
 		4BF1A842195422F800542209 = {
 			isa = PBXGroup;
 			children = (
+				DDD6B75B195853FA0038D377 /* README.md */,
 				4BF1A854195422F800542209 /* RegardTest */,
 				4BF1A879195422F800542209 /* RegardTestTests */,
 				4BF1A84D195422F800542209 /* Frameworks */,
@@ -495,6 +497,7 @@
 				4BF1A885195422F800542209 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 		4BF1A886195422F800542209 /* Build configuration list for PBXNativeTarget "RegardTestTests" */ = {
 			isa = XCConfigurationList;
@@ -503,6 +506,7 @@
 				4BF1A888195422F800542209 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};

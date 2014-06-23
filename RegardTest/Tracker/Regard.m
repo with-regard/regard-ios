@@ -4,6 +4,9 @@
 
 #import "Regard.h"
 
+// Approximate maximum number of events to send in a batch
+const int c_MaxEventsPerBatch = 500;
+
 // Data structure written as the header for a set of events to the cache file
 struct CacheHeader {
     int _length;
@@ -481,12 +484,33 @@ static NSString* _optInDefaultsKey = @"io.WithRegard.OptIn";
             [self readEventsInFile: [cacheDirectory stringByAppendingPathComponent: eventFile] toArray: waitingEvents];
             
             // Send the cache if it gets big enough
+            if ([waitingEvents count] >= c_MaxEventsPerBatch) {
+                // Send as a batch to the server
+                [self sendBatch: waitingEvents];
+                
+                // Synchronise the record queue with the send queue so we don't fill memory in the case where there
+                // are vast quanities of events to get through
+                // TODO: once the logs get big enough, just delete the oldest ones
+                dispatch_sync(_sendQueue, ^{ });
+                
+                // Don't send these events again
+                waitingEvents = [NSMutableArray array];
+            }
+            
+            // Done with this file
+            NSError* deleteError;
+            [[NSFileManager defaultManager] removeItemAtPath: [cacheDirectory stringByAppendingPathComponent: eventFile] error: &deleteError];
+            
+            if (deleteError) {
+                NSLog(@"Regard: error deleting file %@", eventFile);
+            }
         }
         
         // Send the remaining cache
-        
-        // Delete the files that we've just sent
-        
+        if ([waitingEvents count] > 0) {
+            [self sendBatch: waitingEvents];
+            waitingEvents = [NSMutableArray array];
+        }
     });
 }
 

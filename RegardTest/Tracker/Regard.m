@@ -38,6 +38,9 @@ static NSString* _optInDefaultsKey = @"io.WithRegard.OptIn";
 // Chooses a new backing file name
 - (NSString*) pickBackingFilename;
 
+// Loads a set of events from a cache file into an array, to prepare to send them
+- (void) readEventsInFile: (NSString*) filename toArray: (NSMutableArray*) eventArray;
+
 @end
 
 @implementation Regard
@@ -410,6 +413,47 @@ static NSString* _optInDefaultsKey = @"io.WithRegard.OptIn";
     [updateBackingFile closeFile];
 }
 
+- (void) readEventsInFile: (NSString*) filename toArray: (NSMutableArray*) eventArray {
+    NSFileHandle* file = [NSFileHandle fileHandleForReadingAtPath: filename];
+    
+    // Ignore files that cannot be read from
+    if (!file) {
+        NSLog(@"Regard: could not read from file %@", [filename lastPathComponent]);
+        return;
+    }
+    
+    for (;;) {
+        // Read the next block from the file
+        NSData* headerData = [file readDataOfLength: sizeof(struct CacheHeader)];
+        if (!headerData || [headerData length] < sizeof(struct CacheHeader)) {
+            // If we hit the end of the file, we won't get any/enough data here
+            break;
+        }
+        
+        const struct CacheHeader* header = (const struct CacheHeader*)[headerData bytes];
+        
+        // Read the JSON block from the file
+        NSData* jsonData = [file readDataOfLength: header->_length];
+        if (!jsonData || [jsonData length] < header->_length) {
+            // A partial write will mean we get less data than expected here
+            NSLog(@"Regard: file '%@' contains partial data (some events will be missed)", [filename lastPathComponent]);
+            break;
+        }
+        
+        NSError* jsonError = nil;
+        NSArray* decodedBlock = (NSArray*) [NSJSONSerialization JSONObjectWithData: jsonData options: 0 error: &jsonError];
+        
+        if (jsonError || ![decodedBlock isKindOfClass: [NSArray class]]) {
+            // The block didn't contain valid JSON: likely the rest of the file is corrupt
+            NSLog(@"Regard: file '%@' contains corrupted data (some events will be missed)", [filename lastPathComponent]);
+            break;
+        }
+        
+        // Add the events to the array that we'll send to the server
+        [eventArray addObjectsFromArray: decodedBlock];
+    }
+}
+
 - (void) flushCachedEvents {
     dispatch_async(_recordQueue, ^{
         NSError* flushError;
@@ -433,7 +477,8 @@ static NSString* _optInDefaultsKey = @"io.WithRegard.OptIn";
         NSEnumerator*   fileEnum = [cacheFiles objectEnumerator];
         NSString*       eventFile;
         while (eventFile = [fileEnum nextObject]) {
-            // Add the events from this file to the cache
+            // Load the events from this file
+            [self readEventsInFile: [cacheDirectory stringByAppendingPathComponent: eventFile] toArray: waitingEvents];
             
             // Send the cache if it gets big enough
         }

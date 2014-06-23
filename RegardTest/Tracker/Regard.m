@@ -4,6 +4,11 @@
 
 #import "Regard.h"
 
+// Data structure written as the header for a set of events to the cache file
+struct CacheHeader {
+    int _length;
+};
+
 // User defaults key where the Regard user ID is stored
 static NSString* _uidUserDefaultsKey = @"io.WithRegard.UserId";
 
@@ -29,6 +34,9 @@ static NSString* _optInDefaultsKey = @"io.WithRegard.OptIn";
 
 // Callback when the application is no longer active
 - (void) appWillResignActive: (id) obj;
+
+// Chooses a new backing file name
+- (NSString*) pickBackingFilename;
 
 @end
 
@@ -65,6 +73,26 @@ static NSString* _optInDefaultsKey = @"io.WithRegard.OptIn";
     [[Regard withRegard] track: event withProperties: properties];
 }
 
+- (NSString*) pickBackingFilename {
+    int index = 0;
+    
+    NSString* libraryDirectory = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES) objectAtIndex: 0];
+    
+    for (;;) {
+        // Generate the filename for this index
+        NSString* filename = [libraryDirectory stringByAppendingPathComponent: [NSString stringWithFormat: @"Caches/Regard-Events-%i.regard", index]];
+        filename = [filename stringByExpandingTildeInPath];
+        
+        if (![[NSFileManager defaultManager] fileExistsAtPath: filename]) {
+            // This file does not exist: use it as our backing file
+            return filename;
+        }
+        
+        // Try the next file
+        ++index;
+    }
+}
+
 - (id) init {
     // There should be a Regard-Settings plist in any
     NSDictionary* settings = [Regard appSettings];
@@ -94,6 +122,9 @@ static NSString* _optInDefaultsKey = @"io.WithRegard.OptIn";
         _organization           = organization;
         _recentEvents           = [[NSMutableArray alloc] init];
         _willFreeze             = NO;
+        
+        // Choose a location to store unsent events
+        _backingFilename        = [self pickBackingFilename];
         
         // Work out if we're opted in or not
         _optIn                  = [[NSUserDefaults standardUserDefaults] boolForKey: _optInDefaultsKey];
@@ -336,10 +367,39 @@ static NSString* _optInDefaultsKey = @"io.WithRegard.OptIn";
     NSMutableArray* freezeEvents = _recentEvents;
     _recentEvents = [[NSMutableArray alloc] init];
     
-    // TODO: Serialize to a log file
+    // Serialize to a log file
+    NSData* eventData = [NSJSONSerialization dataWithJSONObject: freezeEvents
+                                                        options: 0
+                                                          error: nil];
     
-    // Temporary alternative: send as a batch of events
-    [self sendBatch: freezeEvents];
+    // Append to the backing file
+    NSFileHandle* updateBackingFile = [NSFileHandle fileHandleForUpdatingAtPath: _backingFilename];
+    if (!updateBackingFile) {
+        [[NSFileManager defaultManager] createFileAtPath: _backingFilename contents: [NSData data] attributes: nil];
+        updateBackingFile = [NSFileHandle fileHandleForWritingAtPath: _backingFilename];
+    }
+    
+    // Events get dropped on the floor if we can't get a file to write them to
+    if (!updateBackingFile) {
+        NSLog(@"Regard: could not create event log file");
+        return;
+    }
+    
+    // Append the events to the file
+    [updateBackingFile seekToEndOfFile];
+    
+    // The header helps us detect partial writes, which may occur occasionally
+    struct CacheHeader header;
+    header._length = (int) [eventData length];
+    
+    NSData* headerData = [[NSData alloc] initWithBytes: &header length: sizeof(struct CacheHeader)];
+
+    [updateBackingFile writeData: headerData];
+    [updateBackingFile writeData: eventData];
+    
+    // Ensure that the file is synchronized and closed before continuing
+    [updateBackingFile synchronizeFile];
+    [updateBackingFile closeFile];
 }
 
 - (void) flushCachedEvents {

@@ -37,6 +37,9 @@
     
     // Set the YES if _recentEvents will be 'frozen' to disk
     BOOL _willFreeze;
+    
+    // The name of the backing file that unsent events will be stored in
+    NSString* _backingFilename;
 }
 
 //

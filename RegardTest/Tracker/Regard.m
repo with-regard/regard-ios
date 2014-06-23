@@ -78,9 +78,14 @@ static NSString* _optInDefaultsKey = @"io.WithRegard.OptIn";
     
     NSString* libraryDirectory = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES) objectAtIndex: 0];
     
+    [[NSFileManager defaultManager] createDirectoryAtPath: [libraryDirectory stringByAppendingPathComponent: @"Caches/Regard"]
+                              withIntermediateDirectories: YES
+                                               attributes: nil
+                                                    error: nil];
+    
     for (;;) {
         // Generate the filename for this index
-        NSString* filename = [libraryDirectory stringByAppendingPathComponent: [NSString stringWithFormat: @"Caches/Regard-Events-%i.regard", index]];
+        NSString* filename = [libraryDirectory stringByAppendingPathComponent: [NSString stringWithFormat: @"Caches/Regard/Regard-Events-%i.regard", index]];
         filename = [filename stringByExpandingTildeInPath];
         
         if (![[NSFileManager defaultManager] fileExistsAtPath: filename]) {
@@ -157,6 +162,9 @@ static NSString* _optInDefaultsKey = @"io.WithRegard.OptIn";
                                                  selector: @selector(appWillResignActive:)
                                                      name: UIApplicationWillResignActiveNotification
                                                    object: nil];
+        
+        // Flush the events from the last session
+        [self flushCachedEvents];
     }
     
     return self;
@@ -403,7 +411,38 @@ static NSString* _optInDefaultsKey = @"io.WithRegard.OptIn";
 }
 
 - (void) flushCachedEvents {
-    // TODO
+    dispatch_async(_recordQueue, ^{
+        NSError* flushError;
+        
+        // Stop using whatever backing file we were before
+        _backingFilename = [self pickBackingFilename];
+
+        // Look in the caches directory
+        NSString* libraryDirectory = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES) objectAtIndex: 0];
+        NSString* cacheDirectory = [libraryDirectory stringByAppendingPathComponent: @"Caches/Regard"];
+        
+        // List of events waiting to be sent
+        NSMutableArray* waitingEvents = [NSMutableArray array];
+        
+        // Get a list of all of the cache files and filter to get the .regard files
+        NSArray* cacheFiles = [[NSFileManager defaultManager] contentsOfDirectoryAtPath: cacheDirectory
+                                                                                  error: &flushError];
+        cacheFiles = [cacheFiles filteredArrayUsingPredicate: [NSPredicate predicateWithFormat: @"self ENDSWITH '.regard'"]];
+        
+        // Go through the files
+        NSEnumerator*   fileEnum = [cacheFiles objectEnumerator];
+        NSString*       eventFile;
+        while (eventFile = [fileEnum nextObject]) {
+            // Add the events from this file to the cache
+            
+            // Send the cache if it gets big enough
+        }
+        
+        // Send the remaining cache
+        
+        // Delete the files that we've just sent
+        
+    });
 }
 
 - (void) flushCachedEventsIfOldEnough {

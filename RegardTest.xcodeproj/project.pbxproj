@@ -94,6 +94,7 @@
 			isa = PBXGroup;
 			children = (
 				DDD6B75B195853FA0038D377 /* README.md */,
+				4BF1A88A19543A5000542209 /* Tracker */,
 				4BF1A854195422F800542209 /* RegardTest */,
 				4BF1A879195422F800542209 /* RegardTestTests */,
 				4BF1A84D195422F800542209 /* Frameworks */,
@@ -124,7 +125,6 @@
 		4BF1A854195422F800542209 /* RegardTest */ = {
 			isa = PBXGroup;
 			children = (
-				4BF1A88A19543A5000542209 /* Tracker */,
 				4BF1A85D195422F800542209 /* RGAppDelegate.h */,
 				4BF1A85E195422F800542209 /* RGAppDelegate.m */,
 				4BF1A860195422F800542209 /* Main_iPhone.storyboard */,

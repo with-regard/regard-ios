@@ -40,6 +40,9 @@
     
     // The name of the backing file that unsent events will be stored in
     NSString* _backingFilename;
+    
+    // The number of events we've stored in the backing file in this session
+    int _numFrozenEvents;
 }
 
 //

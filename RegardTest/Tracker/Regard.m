@@ -5,7 +5,7 @@
 #import "Regard.h"
 
 // Approximate maximum number of events to send in a batch
-const int c_MaxEventsPerBatch = 500;
+const int c_MaxEventsPerBatch = 50;
 
 // Data structure written as the header for a set of events to the cache file
 struct CacheHeader {
@@ -136,6 +136,7 @@ static NSString* _optInDefaultsKey = @"io.WithRegard.OptIn";
         
         // Choose a location to store unsent events
         _backingFilename        = [self pickBackingFilename];
+        _numFrozenEvents        = 0;
         
         // Work out if we're opted in or not
         _optIn                  = [[NSUserDefaults standardUserDefaults] boolForKey: _optInDefaultsKey];
@@ -170,7 +171,7 @@ static NSString* _optInDefaultsKey = @"io.WithRegard.OptIn";
                                                    object: nil];
         
         // Flush the events from the last session
-        [self flushCachedEvents];
+        [self flushCachedEventsIfOldEnough];
     }
     
     return self;
@@ -255,6 +256,17 @@ static NSString* _optInDefaultsKey = @"io.WithRegard.OptIn";
     dispatch_async(_recordQueue, ^{
         // Record this event in the recent events log
         [_recentEvents addObject: eventData];
+        ++_numFrozenEvents;
+        
+        // Force a freeze and cycle the cache file if we hit enough events
+        if (_numFrozenEvents >= c_MaxEventsPerBatch) {
+            // Ensure all the events are written out
+            [self freezeCache];
+            
+            // Pick a new backing file
+            _backingFilename = [self pickBackingFilename];
+            _numFrozenEvents = 0;
+        }
         
         // After a short delay, cache the event to disk for sending later on
         if (!_willFreeze) {
@@ -515,7 +527,11 @@ static NSString* _optInDefaultsKey = @"io.WithRegard.OptIn";
 }
 
 - (void) flushCachedEventsIfOldEnough {
-    // TODO
+    dispatch_async(_recordQueue, ^{
+        // If we're connected using wifi, then the events are always old enough
+        
+        // If we're connected via mobile, then events must be at least a day old before we try sending them
+    });
 }
 
 - (void) appWillResignActive: (id) obj {

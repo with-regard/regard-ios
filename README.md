@@ -21,3 +21,7 @@ Note that by default, applications are in an opted-out state where no events wil
     [Regard optIn];             // Opts in the current user
     [Regard optOut];            // Opts out the current user
     [Regard optInByDefault];    // Opts in the current user if this is the first time they've used the app
+
+The iOS client tries to batch events in order to reduce power consumption and network usage. By default it will only send events on application startup once per day. It's possible to force it to send events immediately using the following code:
+
+    [[Regard withRegard] flushCachedEvents];
